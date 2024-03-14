@@ -5,12 +5,15 @@
 #include <time.h>
 #include <ctype.h>
 
+//Used for the lenght of encryption key, player key, and associated loops
+#DEFINE ALPHABET_LENGTH 26
+
 char *answer; //Answer to the cryptogram
-char encryptionKey[26];
-char playerKey[26]; //Correct guesses that the player has made
+char encryptionKey[ALPHABET_LENGTH];
+char playerKey[ALPHABET_LENGTH]; //Correct guesses that the player has made
 
 //Uses the Fisher-Yates method to shuffle our encryption key
-void shuffle(char encryption[26]) {
+void shuffle(char encryption[ALPHABET_LENGTH]) {
   srand(time(NULL)); //Random number initialization
   for (int i = 25; i > 0; i--) {
     int j = rand() % (i);
@@ -86,13 +89,13 @@ void initialization() {
   
   //Filling the encryptionKey with the English alphabet
   encryptionKey[0] = 'A';
-  for(int i = 1; i < 26; i++) {
+  for(int i = 1; i < ALPHABET_LENGTH; i++) {
     encryptionKey[i] = encryptionKey[i-1] + 1; 
   }
   shuffle(encryptionKey);
     
   //Fills playerKey with NUL terminator to prevent NULL pointing
-  for(int i = 0; i < 26; i++) {
+  for(int i = 0; i < ALPHABET_LENGTH; i++) {
     playerKey[i] = '\0';
   }
   //checks to see if the character is alphabetic
@@ -132,5 +135,3 @@ int main(int argc, char *argv[]) {
 
   return 0;
 }
-
-//testing git pull from linux
