@@ -6,7 +6,7 @@
 #include <ctype.h>
 
 //Used for the lenght of encryption key, player key, and associated loops
-#DEFINE ALPHABET_LENGTH 26
+#define ALPHABET_LENGTH 26
 
 char *answer; //Answer to the cryptogram
 char encryptionKey[ALPHABET_LENGTH];
