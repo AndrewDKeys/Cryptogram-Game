@@ -60,13 +60,13 @@ bool updateState(char *input) {
   } else if((strcmp(input, "quit") == 0) || input == NULL) {
     return true;
   } else {
-    printf("Error reading input, please try again.\n");
+    printf("\nError reading input, please try again.");
     return false; 
   }    
 }
 
 void displayWorld() {
-  printf("Encrypted: %s\n", answer);
+  printf("\nEncrypted: %s\n", answer);
   printf("Decrypted: ");
   for(int i = 0; i < strlen(answer); i++) {
     if(isalpha(answer[i])) { //if it not a space
