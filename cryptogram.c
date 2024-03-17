@@ -11,6 +11,8 @@
 char *answer; //Answer to the cryptogram
 char encryptionKey[ALPHABET_LENGTH];
 char playerKey[ALPHABET_LENGTH]; //Correct guesses that the player has made
+int listLength; //the length of the quotes
+struct quote *root; //root of linked list
 
 //Uses the Fisher-Yates method to shuffle our encryption key
 void shuffle(char encryption[ALPHABET_LENGTH]) {
@@ -25,12 +27,62 @@ void shuffle(char encryption[ALPHABET_LENGTH]) {
   } 
 }
 
-void loadPuzzle() {}
+//linked list of each quote from "quotes.txt"
+struct quote {
+  char *text;
+  char *author;
+  struct quote *next;
+};
+
+//Initializes an empty quote
+struct quote * initQuote() {
+  struct quote *newQuote = (struct quote*)malloc(sizeof(struct quote));
+  newQuote->text = NULL;
+  newQuote->author = NULL;
+  newQuote->next = NULL;
+  return newQuote;
+}
+
+//Reads each quote into memory and adds it to the linked list, will return the root of the list
+void loadPuzzle() {
+  FILE *fp;
+  fp = fopen("quotes.txt", "rb");
+  listLength = 0; //initializes listLength
+
+  char *buf = (char *)malloc(150); //allocates more than enough memory than we need to read a line
+  buf = fgets(buf, sizeof(buf), fp);
+  struct quote *newQuote = initQuote();
+  while(buf != NULL) {
+    if(strlen(buf) < 3) { // Empty lines mean that is is the end of the quote
+      if((listLength++) == 0) {
+        root = newQuote;
+      }
+      newQuote->next = initQuote();
+      newQuote = newQuote->next;
+    } else if(buf[0] == '-' && buf[1] == '-') {
+      newQuote->author = strdup(buf);
+    } else if(newQuote->text == NULL) { //if it is the first line in the quote
+      newQuote->text = strdup(buf);
+    } else { //adding text onto the end of the quote
+      newQuote->text = (char *)realloc(newQuote->text, strlen(newQuote->text) + strlen(buf) + 1); //+1 for nul terminator
+      newQuote->text = strcat(newQuote->text, buf);
+    }
+    buf = fgets(buf, sizeof(buf), fp);
+  }
+  newQuote = NULL; //signifies the end of the list
+  fclose(fp);
+  free(buf);
+}
+
 
 char* getPuzzle() {
-  char *puzzle = (char *)malloc(strlen("The 23 quick brown fox, jumped over the lazy dog") + 1); //+1 for the nul terminator
-  strcpy(puzzle,"The 23 quick brown fox, jumped over the lazy dog\0");
-  return puzzle;
+  struct quote *current = root;
+  srand(time(NULL));
+  int loop = rand() % (listLength); //gets a random quote from the linkedlist
+  for(int i = 0; i < loop; i++) {
+    current = current->next;
+  }
+  return current->text;
 }
 
 char* acceptInput() {
@@ -65,26 +117,33 @@ bool updateState(char *input) {
   }    
 }
 
-void displayWorld() {
-  printf("\nEncrypted: %s\n", answer);
-  printf("Decrypted: ");
+//We will return wether or not the player has won the game yet
+bool displayWorld() {
+  bool win = true; //will stay true until an incorrect guess is detected
+  printf("\nEncrypted:\n%s\n", answer);
+  printf("Decrypted:\n");
   for(int i = 0; i < strlen(answer); i++) {
-    if(isalpha(answer[i])) { //if it not a space
+    if(isalpha(answer[i])) { //only if it is an alphabetic character
       if(playerKey[answer[i]-'A'] != '\0') {
         printf("%c", playerKey[answer[i] - 'A']); //player's guessed character
+        if(playerKey[answer[i] - 'A'] != encryptionKey[i]) { //player's guess is not correct
+          win = false;
+        }
       } else {
         printf("_"); //player hasn't guessed this one yet
+        win = false;
       }
     } else {
       printf("%c", answer[i]);
     }
   }
   printf("\n");
-
+  return win;
 }
 
 //set the value for the answer
-void initialization() { 
+void initialization() {
+  loadPuzzle();
   answer = getPuzzle();
   
   //Filling the encryptionKey with the English alphabet
@@ -105,21 +164,55 @@ void initialization() {
       answer[i] = encryptionKey[toupper(answer[i]) - 'A'];
     }     
   }
-
 }
 
 void gameLoop() {
   char *str = (char *)malloc(100);
-
+  bool win;
   do {
-    displayWorld(); //Prints string to terminal
+    win = displayWorld(); //Prints string to terminal
     char *input = acceptInput(); //Accepts user's guess
     strcpy(str, input);
     free(input);
-  } while(!updateState(str)); //Loops until 'quit'
-  displayWorld();
-
+  } while(!updateState(str) || win); //Loops until 'quit'
+  if(displayWorld()) {
+    printf("Good job! You decrypted this message correctly!\n");
+  }
   free(str);
+}
+
+bool playAgain() {
+  char *input = (char *)malloc(10);
+  fgets(input, sizeof(input), stdin);
+  //Finds the return carriage and new line of the string to get rid of.
+  char *returnCarriage = strchr(input, '\r'); //finds first '\r'
+  char *newLine = strchr(input, '\n'); //finds first '\n'
+  if(returnCarriage != NULL) {
+    *returnCarriage = '\0';
+  }
+  if(newLine != NULL) {
+    *newLine = '\0';
+  }
+
+  if(*input == 'y' || *input == 'Y') {
+    free(input);
+    return true;
+  } else {
+    free(input);
+    return false;
+  }
+}
+
+void freeList() {
+  struct quote *current = root;
+  while(current != NULL) {
+    root = root->next;
+    free(current->text);
+    free(current->author);
+    free(current);
+    current = root;
+  }
+  free(root);
 }
 
 void teardown() {
@@ -128,10 +221,13 @@ void teardown() {
 }
 
 int main(int argc, char *argv[]) {
-
-  initialization();
-  gameLoop();
-  teardown();
+  do {
+    initialization();
+    gameLoop();
+    teardown();
+    printf("Would you like to play again? [y/n]\n");
+  } while(playAgain());
+  freeList();
 
   return 0;
 }
