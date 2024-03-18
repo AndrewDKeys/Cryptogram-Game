@@ -59,15 +59,9 @@ void loadPuzzle() {
       newQuote->next = initQuote();
       newQuote = newQuote->next;
     } else if(buf[0] == '-' && buf[1] == '-') {
-      char *temp = (char *)malloc(strlen(buf) + 1);
-      strcpy(temp, buf);
-      newQuote->author = temp;
-      free(temp);
+      newQuote->author = strdup(buf);
     } else if(newQuote->text == NULL) { //if it is the first line in the quote
-      char *temp = (char *)malloc(strlen(buf) + 1);
-      strcpy(temp, buf);
-      newQuote->text = temp;
-      free(temp);
+      newQuote->text = strdup(buf);
     } else { //adding text onto the end of the quote
       char *temp = (char *)malloc(strlen(newQuote->text) + 1); //temp holds the old value of newQuote
       strcpy(temp, newQuote->text);
@@ -135,7 +129,7 @@ bool displayWorld() {
     if(isalpha(answer[i])) { //only if it is an alphabetic character
       if(playerKey[answer[i]-'A'] != '\0') {
         printf("%c", playerKey[answer[i] - 'A']); //player's guessed character
-        if(playerKey[answer[i] - 'A'] != encryptionKey[i]) { //player's guess is not correct
+        if(playerKey[answer[i] - 'A'] != encryptionKey[answer[i] - 'A']) { //player's guess is not correct
           win = false;
         }
       } else {
