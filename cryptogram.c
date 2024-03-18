@@ -43,16 +43,15 @@ struct quote * initQuote() {
   return newQuote;
 }
 
-//Reads each quote into memory and adds it to the linked list, will return the root of the list
+//Reads each quote into memory and adds it to the linked list
 void loadPuzzle() {
   FILE *fp;
   fp = fopen("quotes.txt", "rb");
   listLength = 0; //initializes listLength
 
   char *buf = (char *)malloc(150); //allocates more than enough memory than we need to read a line
-  buf = fgets(buf, sizeof(buf), fp);
   struct quote *newQuote = initQuote();
-  while(buf != NULL) {
+  while(fgets(buf, 150, fp) != NULL) {
     if(strlen(buf) < 3) { // Empty lines mean that is is the end of the quote
       if((listLength++) == 0) {
         root = newQuote;
@@ -60,14 +59,24 @@ void loadPuzzle() {
       newQuote->next = initQuote();
       newQuote = newQuote->next;
     } else if(buf[0] == '-' && buf[1] == '-') {
-      newQuote->author = strdup(buf);
+      char *temp = (char *)malloc(strlen(buf) + 1);
+      strcpy(temp, buf);
+      newQuote->author = temp;
+      free(temp);
     } else if(newQuote->text == NULL) { //if it is the first line in the quote
-      newQuote->text = strdup(buf);
+      char *temp = (char *)malloc(strlen(buf) + 1);
+      strcpy(temp, buf);
+      newQuote->text = temp;
+      free(temp);
     } else { //adding text onto the end of the quote
-      newQuote->text = (char *)realloc(newQuote->text, strlen(newQuote->text) + strlen(buf) + 1); //+1 for nul terminator
-      newQuote->text = strcat(newQuote->text, buf);
+      char *temp = (char *)malloc(strlen(newQuote->text) + 1); //temp holds the old value of newQuote
+      strcpy(temp, newQuote->text);
+      free(newQuote->text); //getting ready for redistribution
+      newQuote->text = (char *)malloc(strlen(temp) + strlen(buf) + 1); //make new space for quote
+      strcpy(newQuote->text, temp); //copy temp back over
+      free(temp);
+      newQuote->text = strcat(newQuote->text, buf); //make the new quote
     }
-    buf = fgets(buf, sizeof(buf), fp);
   }
   newQuote = NULL; //signifies the end of the list
   fclose(fp);
@@ -143,7 +152,9 @@ bool displayWorld() {
 
 //set the value for the answer
 void initialization() {
-  loadPuzzle();
+  if(root == NULL) {
+    loadPuzzle();
+  }
   answer = getPuzzle();
   
   //Filling the encryptionKey with the English alphabet
@@ -206,13 +217,13 @@ bool playAgain() {
 void freeList() {
   struct quote *current = root;
   while(current != NULL) {
-    root = root->next;
-    free(current->text);
-    free(current->author);
+    struct quote *next = current->next;
+    if(current->text != NULL) {free(current->text);}
+    if(current->author != NULL) {free(current->author);}
     free(current);
-    current = root;
+    current = next;
   }
-  free(root);
+  root == NULL;
 }
 
 void teardown() {
