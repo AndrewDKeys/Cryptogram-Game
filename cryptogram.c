@@ -9,6 +9,7 @@
 #define ALPHABET_LENGTH 26
 
 char *answer; //Answer to the cryptogram
+char *decryptedAnswer;
 char encryptionKey[ALPHABET_LENGTH];
 char playerKey[ALPHABET_LENGTH]; //Correct guesses that the player has made
 int listLength; //the length of the quotes
@@ -110,26 +111,27 @@ char* acceptInput() {
 //We want to return true on 'quit' or replace a letter in the answer
 bool updateState(char *input) {
   if(strlen(input) == 2) { 
-    playerKey[toupper(*input) - 'A'] = toupper(*(input + 1)); //Uses distance to replace the player's key with the respective character
+    playerKey[toupper(*(input)) - 'A'] = toupper(*(input + 1)); //Uses distance to replace the player's key with the respective character
     return false;
   } else if((strcmp(input, "quit") == 0) || input == NULL) {
     return true;
   } else {
-    printf("\nError reading input, please try again.");
+    printf("\nError reading input, please try again.\n");
     return false; 
   }    
 }
 
-//We will return wether or not the player has won the game yet
+//returns whether or not they have won
 bool displayWorld() {
-  bool win = true; //will stay true until an incorrect guess is detected
+  printf("%s\n", decryptedAnswer); //<-----------------------------------------------------------------------------------------------Deletimondo
+  bool win = true; //stays true until an incorrect character is guessed
   printf("\nEncrypted:\n%s\n", answer);
   printf("Decrypted:\n");
   for(int i = 0; i < strlen(answer); i++) {
     if(isalpha(answer[i])) { //only if it is an alphabetic character
       if(playerKey[answer[i]-'A'] != '\0') {
         printf("%c", playerKey[answer[i] - 'A']); //player's guessed character
-        if(playerKey[answer[i] - 'A'] != encryptionKey[answer[i] - 'A']) { //player's guess is not correct
+        if(playerKey[answer[i] - 'A'] != toupper(decryptedAnswer[i])) {
           win = false;
         }
       } else {
@@ -140,7 +142,6 @@ bool displayWorld() {
       printf("%c", answer[i]);
     }
   }
-  printf("\n");
   return win;
 }
 
@@ -149,7 +150,8 @@ void initialization() {
   if(root == NULL) {
     loadPuzzle();
   }
-  answer = getPuzzle();
+  answer = strdup(getPuzzle());
+  decryptedAnswer = strdup(answer);
   
   //Filling the encryptionKey with the English alphabet
   encryptionKey[0] = 'A';
@@ -176,12 +178,15 @@ void gameLoop() {
   bool win;
   do {
     win = displayWorld(); //Prints string to terminal
+    if(win) {
+      break;
+    }
     char *input = acceptInput(); //Accepts user's guess
     strcpy(str, input);
     free(input);
-  } while(!updateState(str) || win); //Loops until 'quit'
-  if(displayWorld()) {
-    printf("Good job! You decrypted this message correctly!\n");
+  } while(!updateState(str)); //Loops until 'quit' or win
+  if(win) {
+    printf("Good job! You succesfully decrypted the quote!\n");
   }
   free(str);
 }
@@ -217,11 +222,12 @@ void freeList() {
     free(current);
     current = next;
   }
-  root == NULL;
+  root = NULL;
 }
 
 void teardown() {
   free(answer);
+  free(decryptedAnswer);
   printf("All Done\n");
 }
 
