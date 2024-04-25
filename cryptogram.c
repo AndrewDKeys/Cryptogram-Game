@@ -123,7 +123,6 @@ bool updateState(char *input) {
 
 //returns whether or not they have won
 bool displayWorld() {
-  printf("%s\n", decryptedAnswer); //<-----------------------------------------------------------------------------------------------Deletimondo
   bool win = true; //stays true until an incorrect character is guessed
   printf("\nEncrypted:\n%s\n", answer);
   printf("Decrypted:\n");
