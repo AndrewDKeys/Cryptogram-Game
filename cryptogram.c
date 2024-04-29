@@ -26,13 +26,172 @@ char playerKey[ALPHABET_LENGTH]; //Correct guesses that the player has made
 int listLength; //the length of the quotes
 struct quote *root; //root of linked list
 
+//linked list of each quote from "quotes.txt"
+struct quote {
+  char *text;
+  char *author;
+  struct quote *next;
+};
+
+//Uses the Fisher-Yates method to shuffle our encryption key
+void shuffle(char encryption[ALPHABET_LENGTH]) {
+  srand(time(NULL)); //Random number initialization
+  for (int i = 25; i > 0; i--) {
+    int j = rand() % (i);
+    
+    //Swapping the two indices
+    char temp = encryption[i];
+    encryption[i] = encryption[j];
+    encryption[j] = temp;
+  } 
+}
+
+//Initializes an empty quote
+struct quote * initQuote() {
+  struct quote *newQuote = (struct quote*)malloc(sizeof(struct quote));
+  newQuote->text = NULL;
+  newQuote->author = NULL;
+  newQuote->next = NULL;
+  return newQuote;
+}
+
+void loadPuzzle() {
+  FILE *fp;
+  fp = fopen("quotes.txt", "rb");
+  listLength = 0; //initializes listLength
+
+  char *buf = (char *)malloc(150); //allocates more than enough memory than we need to read a line
+  struct quote *newQuote = initQuote();
+  while(fgets(buf, 150, fp) != NULL) {
+    if(strlen(buf) < 3) { // Empty lines mean that is is the end of the quote
+      if((listLength++) == 0) {
+        root = newQuote;
+      }
+      newQuote->next = initQuote();
+      newQuote = newQuote->next;
+    } else if(buf[0] == '-' && buf[1] == '-') {
+      newQuote->author = strdup(buf);
+    } else if(newQuote->text == NULL) { //if it is the first line in the quote
+      newQuote->text = strdup(buf);
+    } else { //adding text onto the end of the quote
+      char *temp = (char *)malloc(strlen(newQuote->text) + 1); //temp holds the old value of newQuote
+      strcpy(temp, newQuote->text);
+      free(newQuote->text); //getting ready for redistribution
+      newQuote->text = (char *)malloc(strlen(temp) + strlen(buf) + 1); //make new space for quote
+      strcpy(newQuote->text, temp); //copy temp back over
+      free(temp);
+      newQuote->text = strcat(newQuote->text, buf); //make the new quote
+    }
+  }
+  newQuote = NULL; //signifies the end of the list
+  fclose(fp);
+  free(buf);
+}
+
+char* getPuzzle() {
+  struct quote *current = root;
+  srand(time(NULL));
+  int loop = rand() % (listLength); //gets a random quote from the linkedlist
+  for(int i = 0; i < loop; i++) {
+    current = current->next;
+  }
+  return current->text;
+}
+
+//set the value for the answer
+void initialization() {
+  if(root == NULL) {
+    loadPuzzle();
+  }
+  answer = strdup(getPuzzle());
+  decryptedAnswer = strdup(answer);
+  
+  //Filling the encryptionKey with the English alphabet
+  encryptionKey[0] = 'A';
+  for(int i = 1; i < ALPHABET_LENGTH; i++) {
+    encryptionKey[i] = encryptionKey[i-1] + 1; 
+  }
+  shuffle(encryptionKey);
+    
+  //Fills playerKey with NUL terminator to prevent NULL pointing
+  for(int i = 0; i < ALPHABET_LENGTH; i++) {
+    playerKey[i] = '\0';
+  }
+  //checks to see if the character is alphabetic
+  //Gets the encrypted letter, we subtract 'A' to find the letter's index
+  for(int i = 0; answer[i] != '\0'; i++) {
+    if(isalpha(answer[i])) {
+      answer[i] = encryptionKey[toupper(answer[i]) - 'A'];
+    }     
+  }
+}
+
 //structure for threading
 struct request {
     pthread_t thread;
     int client; //client's fd
     char *path; //path to the html file
-    char *html;
 };
+
+//sends an html file to display
+void displayWorld(struct request *clientRequest) {
+  printf("Mallocing the Player Answer");
+  char *playerAnswer = (char *)malloc(sizeof(char) * strlen(answer + 1));
+  for(int i = 0; i < strlen(answer); i++) { //building the players guessed answer
+    if(isalpha(answer[i])) {
+      if(playerKey[answer[i] - 'A'] == '\0') {
+        playerAnswer[i] = '_'; //player hasn't guessed this letter yet
+      } else {
+        playerAnswer[i] = playerKey[answer[i] - 'A'];
+      }
+    } else {
+      playerAnswer[i] = answer[i];
+    }
+  }
+  playerAnswer[strlen(answer)] = '\0';
+
+  char response[1024]; //initializing enough room for the response
+  snprintf(response, sizeof(response), "HTTP/1.1 200 OK\r\nContent-Type: html\r\n\r\n<html><body>Encrypted: <P>%s<P>Decrypted: <P>%s<form submit=crypt><input type=text name=move autofocus maxlength=2></form></html>", answer, playerAnswer);
+
+  send(clientRequest->client, response, strlen(response), 0);
+
+  free(playerAnswer);
+}
+
+bool isGameOver() {
+  bool win = true; //stays true until an incorrect guess is made
+  for(int i = 0; i < strlen(answer); i++) {
+    if(playerKey[answer[i] - 'A'] != toupper(decryptedAnswer[i])) {
+      win = false;
+    }
+  }
+  return win;
+}
+
+//order is the request that we should do next, whether it be start a new game or update the input and creates an html file to return
+void handleGame(struct request *clientRequest, char *order) { //might return a char * of the contents of the file
+  char *seperator = strchr(order, '?');
+  if(seperator != NULL) { //we want to make a move
+    printf("Making a move");
+    char *move;
+    seperator[0] = '\0';
+    move = seperator + 6; //makes move the characters we want to replace
+    if(isalpha(move[0]) && isalpha(move[1])) { //checking for valid input
+      playerKey[toupper(move[0]) - 'A'] = toupper(move[1]); //replaces characters in player key
+    }
+  } else { //we want to start a new game
+    printf("Creating new game");
+    initialization(); 
+  }
+  if(isGameOver()) {
+      teardown();
+      send(clientRequest->client,"HTTP/1.1 200 OK\r\nContent-Type: html\r\n\r\n<body>Congratulations, you solved the cryptogram!</body>", 200, 0);
+      free(clientRequest->path);
+      close(clientRequest->client);
+      pthread_exit(NULL);
+  }
+  displayWorld(clientRequest);
+}
 
 void *handleRequest(void *request) {
     struct request *clientRequest = (struct request *)request;
@@ -44,7 +203,6 @@ void *handleRequest(void *request) {
         pthread_exit(NULL);
     }
 
-
     //find the path being requested
     char *saveptr;
     char *token = strtok_r(buffer, " ", &saveptr);
@@ -53,74 +211,9 @@ void *handleRequest(void *request) {
     }
     token = token + 1; //this gets rid of the first '/' so we can cat it later
 
-    //build the absolute path
-    char *savedirptr;
-    char *directoryWalk = strtok_r(token, "/", &savedirptr);
-    while(directoryWalk != NULL) {
-        printf("here\n");
-        if(strstr(directoryWalk, ".html") == NULL) { //seeing if this is not the html file
-            strcat(clientRequest->path, directoryWalk);
-            strcat(clientRequest->path, "/");
-            directoryWalk = strtok_r(NULL, "/", &savedirptr);
-        } else {
-            clientRequest->html = directoryWalk;
-            break; //we found the html file, we don't want that in our path
-        }
-    }
+    printf("Handling Game");
+    handleGame(clientRequest, strdup(token));
 
-    DIR *htmlDirectory = opendir(clientRequest->path);
-    if(htmlDirectory == NULL) {
-        free(clientRequest->path);
-        send(clientRequest->client, "HTTP/1.1 404 Not Found\r\nContent-Length: 33\r\n\r\n<h1>404 Directory Not Found</h1>", 200, 0);
-        close(clientRequest->client);
-        pthread_exit(NULL);
-    }
-
-    //begin to look through the open directory to find the html file
-    printf("Looking for html file\n");
-    char *htmlFile;
-    int fileSize;
-    struct dirent *entry;
-    while((entry = readdir(htmlDirectory)) != NULL) {
-        if(strstr(entry->d_name, clientRequest->html) != NULL) {
-            int file = open(entry->d_name, O_RDONLY);
-            if(file == -1) {
-                free(clientRequest->path);
-                send(clientRequest->client, "HTTP/1.1 404 Not Found\r\nContent-Length: 33\r\n\r\n<h1>404 File Not Found</h1>", 200, 0);
-                close(clientRequest->client);
-                pthread_exit(NULL);
-            }
-
-            struct stat statbuf;
-            fstat(file, &statbuf);
-            fileSize = statbuf.st_size;
-
-            htmlFile = (char *)malloc(fileSize + 1);
-            htmlFile[0] = ' ';
-            read(file, htmlFile, fileSize + 1);
-
-            close(file);
-            break; //we can stop looking now
-        }
-    }
-    if(htmlFile == NULL || fileSize <= 0) {  
-        send(clientRequest->client, "HTTP/1.1 404 Not Found\r\nContent-Length: 33\r\n\r\n<h1>404 File Not Found</h1>", 200, 0);
-        free(clientRequest->path);
-        close(clientRequest->client);    
-        closedir(htmlDirectory);
-        pthread_exit(NULL);
-    }
-
-    char response[50 + fileSize + 1]; //initializing enough room for the response
-    response[0] = ' ';
-    snprintf(response, sizeof(response), "HTTP/1.1 200 OK\r\nContent-Length: %d\r\n\r\n%s", fileSize, htmlFile);
-    //strcat(response, htmlFile);
-
-    send(clientRequest->client, response, sizeof(response), 0);
-
-    free(htmlFile);
-    closedir(htmlDirectory);
-    free(clientRequest->path);
     close(clientRequest->client);
     pthread_exit(NULL);
 }
@@ -187,99 +280,6 @@ int socketSetUp() {
     return sock;
 }
 
-//Uses the Fisher-Yates method to shuffle our encryption key
-void shuffle(char encryption[ALPHABET_LENGTH]) {
-  srand(time(NULL)); //Random number initialization
-  for (int i = 25; i > 0; i--) {
-    int j = rand() % (i);
-    
-    //Swapping the two indices
-    char temp = encryption[i];
-    encryption[i] = encryption[j];
-    encryption[j] = temp;
-  } 
-}
-
-//linked list of each quote from "quotes.txt"
-struct quote {
-  char *text;
-  char *author;
-  struct quote *next;
-};
-
-//Initializes an empty quote
-struct quote * initQuote() {
-  struct quote *newQuote = (struct quote*)malloc(sizeof(struct quote));
-  newQuote->text = NULL;
-  newQuote->author = NULL;
-  newQuote->next = NULL;
-  return newQuote;
-}
-
-//Reads each quote into memory and adds it to the linked list
-void loadPuzzle() {
-  FILE *fp;
-  fp = fopen("quotes.txt", "rb");
-  listLength = 0; //initializes listLength
-
-  char *buf = (char *)malloc(150); //allocates more than enough memory than we need to read a line
-  struct quote *newQuote = initQuote();
-  while(fgets(buf, 150, fp) != NULL) {
-    if(strlen(buf) < 3) { // Empty lines mean that is is the end of the quote
-      if((listLength++) == 0) {
-        root = newQuote;
-      }
-      newQuote->next = initQuote();
-      newQuote = newQuote->next;
-    } else if(buf[0] == '-' && buf[1] == '-') {
-      newQuote->author = strdup(buf);
-    } else if(newQuote->text == NULL) { //if it is the first line in the quote
-      newQuote->text = strdup(buf);
-    } else { //adding text onto the end of the quote
-      char *temp = (char *)malloc(strlen(newQuote->text) + 1); //temp holds the old value of newQuote
-      strcpy(temp, newQuote->text);
-      free(newQuote->text); //getting ready for redistribution
-      newQuote->text = (char *)malloc(strlen(temp) + strlen(buf) + 1); //make new space for quote
-      strcpy(newQuote->text, temp); //copy temp back over
-      free(temp);
-      newQuote->text = strcat(newQuote->text, buf); //make the new quote
-    }
-  }
-  newQuote = NULL; //signifies the end of the list
-  fclose(fp);
-  free(buf);
-}
-
-
-char* getPuzzle() {
-  struct quote *current = root;
-  srand(time(NULL));
-  int loop = rand() % (listLength); //gets a random quote from the linkedlist
-  for(int i = 0; i < loop; i++) {
-    current = current->next;
-  }
-  return current->text;
-}
-
-char* acceptInput() {
-  printf("Enter a letter and then a letter to replace it with or 'quit' to quit.\n");
-  
-  char *input = (char *)malloc(100);
-  fgets(input, sizeof(input), stdin);
-  
-  //Finds the return carriage and new line of the string to get rid of.
-  char *returnCarriage = strchr(input, '\r'); //finds first '\r'
-  char *newLine = strchr(input, '\n'); //finds first '\n'
-  if(returnCarriage != NULL) {
-    *returnCarriage = '\0';
-  }
-  if(newLine != NULL) {
-    *newLine = '\0';
-  }
-
-  return input;
-}
-
 //We want to return true on 'quit' or replace a letter in the answer
 bool updateState(char *input) {
   if(strlen(input) == 2) { 
@@ -291,97 +291,6 @@ bool updateState(char *input) {
     printf("\nError reading input, please try again.\n");
     return false; 
   }    
-}
-
-//returns whether or not they have won
-bool displayWorld() {
-  bool win = true; //stays true until an incorrect character is guessed
-  printf("\nEncrypted:\n%s\n", answer);
-  printf("Decrypted:\n");
-  for(int i = 0; i < strlen(answer); i++) {
-    if(isalpha(answer[i])) { //only if it is an alphabetic character
-      if(playerKey[answer[i]-'A'] != '\0') {
-        printf("%c", playerKey[answer[i] - 'A']); //player's guessed character
-        if(playerKey[answer[i] - 'A'] != toupper(decryptedAnswer[i])) {
-          win = false;
-        }
-      } else {
-        printf("_"); //player hasn't guessed this one yet
-        win = false;
-      }
-    } else {
-      printf("%c", answer[i]);
-    }
-  }
-  return win;
-}
-
-//set the value for the answer
-void initialization() {
-  if(root == NULL) {
-    loadPuzzle();
-  }
-  answer = strdup(getPuzzle());
-  decryptedAnswer = strdup(answer);
-  
-  //Filling the encryptionKey with the English alphabet
-  encryptionKey[0] = 'A';
-  for(int i = 1; i < ALPHABET_LENGTH; i++) {
-    encryptionKey[i] = encryptionKey[i-1] + 1; 
-  }
-  shuffle(encryptionKey);
-    
-  //Fills playerKey with NUL terminator to prevent NULL pointing
-  for(int i = 0; i < ALPHABET_LENGTH; i++) {
-    playerKey[i] = '\0';
-  }
-  //checks to see if the character is alphabetic
-  //Gets the encrypted letter, we subtract 'A' to find the letter's index
-  for(int i = 0; answer[i] != '\0'; i++) {
-    if(isalpha(answer[i])) {
-      answer[i] = encryptionKey[toupper(answer[i]) - 'A'];
-    }     
-  }
-}
-
-void gameLoop() {
-  char *str = (char *)malloc(100);
-  bool win;
-  do {
-    win = displayWorld(); //Prints string to terminal
-    if(win) {
-      break;
-    }
-    char *input = acceptInput(); //Accepts user's guess
-    strcpy(str, input);
-    free(input);
-  } while(!updateState(str)); //Loops until 'quit' or win
-  if(win) {
-    printf("Good job! You succesfully decrypted the quote!\n");
-  }
-  free(str);
-}
-
-bool playAgain() {
-  char *input = (char *)malloc(10);
-  fgets(input, sizeof(input), stdin);
-  //Finds the return carriage and new line of the string to get rid of.
-  char *returnCarriage = strchr(input, '\r'); //finds first '\r'
-  char *newLine = strchr(input, '\n'); //finds first '\n'
-  if(returnCarriage != NULL) {
-    *returnCarriage = '\0';
-  }
-  if(newLine != NULL) {
-    *newLine = '\0';
-  }
-
-  if(*input == 'y' || *input == 'Y') {
-    free(input);
-    return true;
-  } else {
-    free(input);
-    return false;
-  }
 }
 
 void freeList() {
@@ -403,27 +312,15 @@ void teardown() {
 }
 
 int main(int argc, char *argv[]) {
-    if(argc != 2) {
-        printf("failure: no path provided\n");
-        return EXIT_FAILURE;
-    }
 
-    int sockfd = socketSetUp();
-    if(sockfd == -1) {
-        close(sockfd);
-        perror("network setup error\n");
-        return EXIT_FAILURE;
-    }
+  int sockfd = socketSetUp();
+  if(sockfd == -1) {
+      close(sockfd);
+      perror("network setup error\n");
+      return EXIT_FAILURE;
+  }
 
-    requestListen(sockfd, argv[1]);
-
-  // do {
-  //   initialization();
-  //   gameLoop();
-  //   teardown();
-  //   printf("Would you like to play again? [y/n]\n");
-  // } while(playAgain());
-  // freeList();
+  requestListen(sockfd, argv[0]);
 
   return 0;
 }
